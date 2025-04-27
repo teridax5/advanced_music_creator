@@ -1,0 +1,2 @@
+Venv: sudo apt-get install ffmpeg portaudio-dev jackd2
+Globally: sudo apt install python3-pyaudio
