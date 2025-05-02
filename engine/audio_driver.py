@@ -4,9 +4,9 @@ import wave
 from collections.abc import Callable
 from threading import Thread
 
-import matplotlib.pyplot as plt
-import numpy as np
 from pydub.playback import play
+
+from engine.time_spaced_signals import *
 
 
 def time_format(num: int) -> str:
@@ -156,17 +156,6 @@ class AudioFile:
             daemon=True,
         )
 
-    @staticmethod
-    def generate_tone(freq: int, frate: int, time_vector: np.array) -> (
-            np.array):
-        """
-        Generates tone with frequency freq using frate for modulation
-        :param freq: Frequency of the sine wave
-        :param frate: Frame rate of the sound
-        :return: Numpy array - resulting points for sine
-        """
-        return 0.5 * (np.sin(2 * np.pi * freq * time_vector / frate) + 1)
-
     def create_new_sound(
         self,
         source: Callable,
@@ -191,15 +180,12 @@ class AudioFile:
         :param duration: Duration of sample in seconds
         :return:
         """
-        time_vector = np.array([i for i in range(frame_rate*duration)])
-        window = 0.5 # * np.hamming(len(time_vector))
+        time_vector = np.array([i for i in range(frame_rate * duration)])
+        window = 0.5  # * np.hamming(len(time_vector))
 
-        source_kwargs['frate'] = frame_rate
         source_kwargs['time_vector'] = time_vector
+        source_kwargs['frate'] = frame_rate
         signal = window * source(**source_kwargs)
-        plt.plot(time_vector, signal)
-        plt.grid()
-        plt.show()
         amplitude = 2 ** (8 * width - 1)
 
         encoded_signal = []
@@ -217,18 +203,18 @@ class AudioFile:
 
 
 if __name__ == "__main__":
-    af = AudioFile("tone50Hz.wav")
+    af = AudioFile("rev_step100Hz.wav")
     af.get_sound_info()
     af.get_music_thread(0, 10)
     af.thread.start()
     af.thread.join()
     # new_file = AudioFile()
     # new_file.create_new_sound(
-    #     source=new_file.generate_tone,
-    #     source_kwargs={'freq': 50},
+    #     source=generate_step_signal_reversed,
+    #     source_kwargs={'freq': 100, 'step_factor':0.3},
     #     frame_rate=96000,
     #     channels=1,
     #     width=2,
-    #     save_name='tone50Hz',
+    #     save_name='rev_step100Hz',
     #     duration=10,
     # )
