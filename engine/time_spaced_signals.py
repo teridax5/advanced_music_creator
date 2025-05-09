@@ -115,15 +115,16 @@ def generate_step_signal_reversed(freq: int, frate: int, time_vector: np.array, 
     return generate_step_signal(freq, frate, time_vector, step_factor)
 
 
-signal_funcs = (
-    generate_tone.__name__,
-    generate_one_sided_triangle.__name__,
-    generate_one_sided_triangle_reversed.__name__,
-    generate_two_sided_triangle.__name__,
-    generate_two_sided_triangle_reversed.__name__,
-    generate_step_signal.__name__,
-    generate_step_signal_reversed.__name__,
+signals = (
+    generate_tone,
+    generate_one_sided_triangle,
+    generate_one_sided_triangle_reversed,
+    generate_two_sided_triangle,
+    generate_two_sided_triangle_reversed,
+    generate_step_signal,
+    generate_step_signal_reversed
 )
+signal_funcs = tuple(signal.__name__ for signal in signals)
 
 
 if __name__ == '__main__':
