@@ -7,27 +7,27 @@ def reversed_signal(signal):
     @wraps(signal)
     def wrapper(*args, **kwargs):
         result = signal(*args, **kwargs)
-        frate = kwargs.get('frate')
-        freq = kwargs.get('freq')
+        frate = kwargs.get("frate")
+        freq = kwargs.get("freq")
         if frate and freq:
             num_of_intervals = frate // freq
             switch = False
             output = []
             for idx, frame in enumerate(result):
                 frame = float(frame)
-                if not idx%num_of_intervals:
+                if not idx % num_of_intervals:
                     switch = not switch
                 if switch:
-                    output.append(0.5*(frame+1))
+                    output.append(0.5 * (frame + 1))
                 else:
-                    output.append(0.5*(-frame+1))
+                    output.append(0.5 * (-frame + 1))
             result = np.array(output)
         return result
+
     return wrapper
 
 
-def generate_tone(freq: int, frate: int, time_vector: np.array) -> (
-        np.array):
+def generate_tone(freq: int, frate: int, time_vector: np.array) -> np.array:
     """
     Generates tone with frequency freq using frate for modulation
 
@@ -79,20 +79,27 @@ def generate_two_sided_triangle(freq: int, frate: int, time_vector: np.array):
 
 
 @reversed_signal
-def generate_one_sided_triangle_reversed(freq: int, frate: int, time_vector: np.array):
+def generate_one_sided_triangle_reversed(
+    freq: int, frate: int, time_vector: np.array
+):
     return generate_one_sided_triangle(freq, frate, time_vector)
 
 
 @reversed_signal
-def generate_two_sided_triangle_reversed(freq: int, frate: int, time_vector: np.array):
+def generate_two_sided_triangle_reversed(
+    freq: int, frate: int, time_vector: np.array
+):
     return generate_two_sided_triangle(freq, frate, time_vector)
 
 
-def generate_step_signal(freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5):
+def generate_step_signal(
+    freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5
+):
     """
     Generates step signal form
 
-    :param step_factor: Percent of how step filled inside one frequency interval
+    :param step_factor: Percent of how step filled inside one frequency
+    interval
     :param freq: Frequency of steps in one frame
     :param frate: Input frame rate
     :param time_vector: Input time vector
@@ -111,7 +118,9 @@ def generate_step_signal(freq: int, frate: int, time_vector: np.array, step_fact
 
 
 @reversed_signal
-def generate_step_signal_reversed(freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5):
+def generate_step_signal_reversed(
+    freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5
+):
     return generate_step_signal(freq, frate, time_vector, step_factor)
 
 
@@ -122,12 +131,12 @@ signals = (
     generate_two_sided_triangle,
     generate_two_sided_triangle_reversed,
     generate_step_signal,
-    generate_step_signal_reversed
+    generate_step_signal_reversed,
 )
 signal_funcs = tuple(signal.__name__ for signal in signals)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from gui.graphics import build_time_spaced_graphic
 
     num_of_points = 44100
@@ -158,5 +167,7 @@ if __name__ == '__main__':
     # )
     build_time_spaced_graphic(
         time_vector,
-        generate_step_signal_reversed(freq=10, frate=num_of_points, time_vector=time_vector)
+        generate_step_signal_reversed(
+            freq=10, frate=num_of_points, time_vector=time_vector
+        ),
     )

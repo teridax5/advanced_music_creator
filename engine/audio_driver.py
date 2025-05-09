@@ -2,10 +2,9 @@ import io
 import subprocess
 import wave
 from collections.abc import Callable
-from threading import Thread
+from threading import Thread, Event
 from typing import Dict, List
 
-import numpy as np
 from pydub.playback import play
 
 from engine.time_spaced_signals import *
@@ -26,11 +25,14 @@ class AudioFile:
         self.thread = None
 
     def __repr__(self):
-        sound_info = f'{self.path if self.path else "gen"} '
+        sound_info = f"{self.path if self.path else 'gen'} "
         for key, value in self.sound_info.items():
-            sound_info += f' {key}:{value} '
-        sound_info+= f'duration:{self.track_length}'
+            sound_info += f" {key}:{value} "
+        sound_info += f"duration:{self.track_length}"
         return sound_info
+
+    def __eq__(self, other):
+        return self.sound_info == other.sound_info
 
     @property
     def format(self):
@@ -74,9 +76,7 @@ class AudioFile:
         return secs * frame_rate * width * channels
 
     def play_thread(
-        self,
-        start_frame: int | None = None,
-        end_frame: int | None = None
+        self, start_frame: int | None = None, end_frame: int | None = None
     ):
         """
         Plays sound file or its fragment
@@ -149,16 +149,18 @@ class AudioFile:
         )
 
     def generate_time_spaced_signal(
-            self,
-            source: Callable,
-            frame_rate: int,
-            source_kwargs: dict,
-            duration: int,
+        self,
+        source: Callable,
+        frame_rate: int,
+        source_kwargs: dict,
+        duration: int,
+        delay,
     ):
         """
         Generate signal based on input and writes np.array into signal_shape
         field
 
+        :param delay: Delay for the signal
         :param source: A callable, which returns time-spaced signal
         :param frame_rate: Frame rate for signal
         :param source_kwargs: Keyword args for source
@@ -168,15 +170,17 @@ class AudioFile:
         time_vector = np.array([i for i in range(frame_rate * duration)])
         window = 0.5  # * np.hamming(len(time_vector))
 
-        source_kwargs['time_vector'] = time_vector
-        source_kwargs['frate'] = frame_rate
+        source_kwargs["time_vector"] = time_vector
+        source_kwargs["frate"] = frame_rate
         signal = window * source(**source_kwargs)
+        if delay:
+            signal = np.append(np.zeros(delay * frame_rate), signal)
         self.signal_shape = signal
 
     @staticmethod
     def encode_time_spaced_signal(
-            signal: np.array,
-            width: int,
+        signal: np.array,
+        width: int,
     ):
         """
         Encode time-spaced signal in np.array
@@ -194,12 +198,12 @@ class AudioFile:
         return encoded_signal
 
     def write_metadata(
-            self,
-            encoded_signal: bytes,
-            channels: int,
-            width: int,
-            frame_rate: int,
-            duration: int,
+        self,
+        encoded_signal: bytes,
+        channels: int,
+        width: int,
+        frame_rate: int,
+        duration: int,
     ):
         """
         Writes metadata of result audio signal into fields
@@ -226,12 +230,14 @@ class AudioFile:
         width: int,
         source_kwargs: dict,
         save_name: str | None = None,
-        duration: int = 1
+        duration: int = 1,
+        time_shift: int = 0,
     ):
         """
         Converts signal points from source into audio with parameters given
         and saves result
 
+        :param time_shift: Time delay for the sound
         :param source: Callable object to get sound shape data
         :param frame_rate: Frame rate of the sound
         :param width: Number of octets to be encoded
@@ -246,6 +252,7 @@ class AudioFile:
             frame_rate=frame_rate,
             source_kwargs=source_kwargs,
             duration=duration,
+            delay=time_shift,
         )
         signal = self.signal_shape
         encoded_signal = self.encode_time_spaced_signal(
@@ -257,7 +264,7 @@ class AudioFile:
             channels=1,
             width=width,
             frame_rate=frame_rate,
-            duration=duration,
+            duration=duration + time_shift,
         )
 
         if save_name:
@@ -270,6 +277,7 @@ class AudioDriver:
     def __init__(self):
         self.threads: List[Thread] = []
         self.audio_files: Dict[str, AudioFile] = {}
+        self.stopped_at = None
 
     def add_to_threads(self, audio: str):
         """
@@ -281,45 +289,66 @@ class AudioDriver:
         if not audio_file:
             return
         audio_file.get_sound_info()
-        audio_file.get_music_thread(0, audio_file.track_length)
+        audio_file.get_music_thread(
+            self.stopped_at if self.stopped_at else 0,
+            audio_file.track_length
+        )
+        print(self.stopped_at)
         self.threads.append(self.audio_files[audio].thread)
 
     def create_new_sample(
-            self,
-            signal: Callable,
-            freq: int,
-            frame_rate: int,
-            width: int,
-            duration: int,
-            save_name: str | None = None,
+        self,
+        signal: Callable,
+        freq: int,
+        frame_rate: int,
+        width: int,
+        duration: int,
+        channel_name: str,
+        save_name: str | None = None,
+        time_shift: int = 0,
     ):
         """
-        Creates new audio file by given parameters and puts it into audio files dict
+        Creates new audio file by given parameters and puts it into audio
+        files dict
 
+        :param channel_name: Name of the channel
+        :param time_shift: Time after sample starts
         :param signal: A function to generate certain time-spaced signal
         :param freq: A frequency of the signal
         :param frame_rate: A frame rate for the sample
         :param width: A byte height of the signal
         :param duration: A duration of the sample
         :param save_name: At which name the sample should be saved
-        :return: Both signals, their AudioFile objects and sizes
+        :return: Result's signal name
         """
         if save_name:
-            save_name = save_name+'.wav'
+            save_name = save_name + ".wav"
         new_sample = AudioFile()
         new_sample.create_new_sound(
             source=signal,
-            source_kwargs={'freq': freq},
+            source_kwargs={"freq": freq},
             frame_rate=frame_rate,
             width=width,
             save_name=save_name,
-            duration=duration
+            duration=duration,
+            time_shift=time_shift,
         )
-        self.audio_files[f'{signal.__name__}{freq}Hz'] = new_sample
+        audio_name = channel_name
+        self.audio_files[audio_name] = new_sample
+        return audio_name
 
     def adjust_two_signals(self, key1: str, key2: str):
+        """
+        Adjust duration between two signals
+
+        :param key1: The first sample by key in audio files
+        :param key2: The second sample by key in audio files
+        :return: Both signals, their AudioFile objects and sizes
+        """
         audio1 = self.audio_files.get(key1, None)
         audio2 = self.audio_files.get(key2, None)
+        if not audio1 == audio2:
+            raise Exception("Samples have different parameters!")
         signal1 = audio1.signal_shape
         signal2 = audio2.signal_shape
 
@@ -334,34 +363,44 @@ class AudioDriver:
 
     def join_by_sum(self, key1: str, key2: str):
         """
-        Join two signals taken by keys and mixes them into one by the rule of parallel signals' sum
+        Join two signals taken by keys and mixes them into one by the rule of
+        parallel signals' sum
 
         :param key1: The first sample by key in audio files
         :param key2: The second sample by key in audio files
         :return:
         """
-        signal1, signal2, audio1, audio2, _, _ = self.adjust_two_signals(key1, key2)
+        signal1, signal2, audio1, audio2, _, _ = self.adjust_two_signals(
+            key1, key2
+        )
 
         joined = signal1 + signal2
-        joined = 0.5/max(joined) * joined
+        joined = 0.5 / max(joined) * joined
 
         joined_audio = AudioFile()
         joined_audio.signal_shape = joined
-        joined_encoded = joined_audio.encode_time_spaced_signal(signal=joined, width=2)
+        joined_encoded = joined_audio.encode_time_spaced_signal(
+            signal=joined, width=2
+        )
         joined_audio.content = bytes(joined_encoded)
         joined_audio.sound_info = audio1.sound_info.copy()
-        joined_audio.track_length = max(audio1.track_length, audio2.track_length)
-        self.audio_files['joined_by_sum'] = joined_audio
+        joined_audio.track_length = max(
+            audio1.track_length, audio2.track_length
+        )
+        self.audio_files["joined_by_sum"] = joined_audio
 
     def join_by_max(self, key1: str, key2: str):
         """
-        Join two signals taken by keys and mixes them into one by the rule of maximum in each frame
+        Join two signals taken by keys and mixes them into one by the rule of
+        maximum in each frame
 
         :param key1: The first sample by key in audio files
         :param key2: The second sample by key in audio files
         :return:
         """
-        signal1, signal2, audio1, audio2, size1, size2 = self.adjust_two_signals(key1, key2)
+        signal1, signal2, audio1, audio2, size1, size2 = (
+            self.adjust_two_signals(key1, key2)
+        )
 
         result = []
         for idx in range(max(size1, size2)):
@@ -370,15 +409,22 @@ class AudioDriver:
 
         joined_audio = AudioFile()
         joined_audio.signal_shape = result
-        joined_encoded = joined_audio.encode_time_spaced_signal(signal=result, width=2)
+        joined_encoded = joined_audio.encode_time_spaced_signal(
+            signal=result, width=2
+        )
         joined_audio.content = bytes(joined_encoded)
         joined_audio.sound_info = audio1.sound_info.copy()
-        joined_audio.track_length = max(audio1.track_length, audio2.track_length)
-        self.audio_files['joined_by_max'] = joined_audio
+        joined_audio.track_length = max(
+            audio1.track_length, audio2.track_length
+        )
+        self.audio_files["joined_by_max"] = joined_audio
 
-    def make_stereo_sound(self, key1: str, key2: str | None = None, right_to_left: bool = True):
+    def make_stereo_sound(
+        self, key1: str, key2: str | None = None, right_to_left: bool = True
+    ):
         """
-        Join two samples into one two channeled (stereo); by default the first audio goes to right channel
+        Join two samples into one two channeled (stereo); by default
+        the first audio goes to right channel
 
         :param key1: The first sample by key in audio files
         :param key2: The second sample by key in audio files
@@ -391,7 +437,7 @@ class AudioDriver:
             return
         if not audio2:
             audio2 = AudioFile()
-            audio2.content = bytes([0]*len(audio1.content))
+            audio2.content = bytes([0] * len(audio1.content))
             audio2.sound_info = audio1.sound_info.copy()
             audio2.track_length = audio1.track_length
 
@@ -403,15 +449,15 @@ class AudioDriver:
             bytes1 = audio1.content
             bytes2 = audio2.content
         for i in range(0, min(len(bytes1), len(bytes2)), 2):
-            result_bytes.extend(bytes1[i:i + 2] + bytes2[i:i + 2])
+            result_bytes.extend(bytes1[i : i + 2] + bytes2[i : i + 2])
         result_bytes = bytes(result_bytes)
 
         new_file = AudioFile()
         new_file.content = result_bytes
         new_file.sound_info = audio1.sound_info.copy()
         new_file.track_length = audio1.track_length
-        new_file.sound_info['nchannels'] = 2
-        self.audio_files['stereo'] = new_file
+        new_file.sound_info["nchannels"] = 2
+        self.audio_files["stereo"] = new_file
 
     def play_threads(self):
         if not self.threads:
@@ -419,9 +465,6 @@ class AudioDriver:
 
         for thread in self.threads:
             thread.start()
-        for thread in self.threads:
-            thread.join()
-
 
 
 if __name__ == "__main__":
@@ -448,6 +491,7 @@ if __name__ == "__main__":
         frame_rate=96000,
         width=2,
         duration=6,
+        channel_name="Channel 1",
     )
     driver.create_new_sample(
         signal=driver.time_spaced_signals[0],
@@ -455,6 +499,8 @@ if __name__ == "__main__":
         frame_rate=96000,
         width=2,
         duration=4,
+        time_shift=2,
+        channel_name="Channel 2",
     )
     driver.create_new_sample(
         signal=driver.time_spaced_signals[0],
@@ -462,6 +508,7 @@ if __name__ == "__main__":
         frame_rate=96000,
         width=2,
         duration=2,
+        channel_name="Channel 3",
     )
     keys = tuple(driver.audio_files.keys())
     print(keys)
@@ -470,5 +517,5 @@ if __name__ == "__main__":
     # driver.make_stereo_sound(*sample_names)
     # for key in driver.audio_files.keys():
     #     driver.add_to_threads(key)
-    driver.add_to_threads('joined_by_sum')
+    driver.add_to_threads("joined_by_sum")
     driver.play_threads()
