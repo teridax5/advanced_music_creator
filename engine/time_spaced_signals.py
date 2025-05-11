@@ -1,4 +1,5 @@
 from functools import wraps
+from typing import Tuple
 
 import numpy as np
 
@@ -27,73 +28,87 @@ def reversed_signal(signal):
     return wrapper
 
 
-def generate_tone(freq: int, frate: int, time_vector: np.array) -> np.array:
+def generate_tone(
+    freq: int, frate: int, time_vector: np.array, linear_oscillator: Tuple[int]
+) -> np.array:
     """
     Generates tone with frequency freq using frate for modulation
 
     :param frate: Input frame rate
     :param freq: Frequency of the sine wave
     :param time_vector: Input time vector
+    :param linear_oscillator: FM linear oscillator
     :return: Numpy array - resulting points for sine
     """
+    freq = linear_oscillator[0] * time_vector/frate + linear_oscillator[1]*freq
     return 0.5 * (np.sin(2 * np.pi * freq * time_vector / frate) + 1)
 
 
-def generate_one_sided_triangle(freq: int, frate: int, time_vector: np.array):
+def generate_one_sided_triangle(
+    freq: int, frate: int, time_vector: np.array, linear_oscillator: Tuple[int]
+):
     """
     Generates one-sided triangle saw signal form
 
     :param freq: Frequency of triangles in one frame
     :param frate: Input frame rate
     :param time_vector: Input time vector
+    :param linear_oscillator: FM linear oscillator
     :return: Numpy array - resulting points for one-sided triangle
     """
-    num_of_intervals = frate // freq
-    return (time_vector % num_of_intervals) / num_of_intervals
+    freq = linear_oscillator[0] * time_vector/frate + linear_oscillator[1] * freq
+    period = frate / freq
+    return (time_vector % period) / period
 
 
-def generate_two_sided_triangle(freq: int, frate: int, time_vector: np.array):
+def generate_two_sided_triangle(
+    freq: int, frate: int, time_vector: np.array, linear_oscillator: Tuple[int]
+):
     """
     Generates two-sided triangle saw signal form
 
     :param freq: Frequency of triangles in one frame
     :param frate: Input frame rate
     :param time_vector: Input time vector
+    :param linear_oscillator: FM linear oscillator
     :return: Numpy array - resulting points for two-sided triangle
     """
-    num_of_intervals = frate // freq
-    half_interval = num_of_intervals // 2
-    straight_saw = (time_vector % half_interval) / half_interval
-    backward_saw = 1 - straight_saw
-    output = []
-    switch = False
-    for frame in range(len(time_vector)):
-        if not frame % half_interval:
-            switch = not switch
-        if switch:
-            output.append(straight_saw[frame])
-        else:
-            output.append(backward_saw[frame])
-    output[-1] = 0
-    return np.array(output)
+    freq = linear_oscillator[0] * time_vector/frate + linear_oscillator[1] * freq
+    period = frate / freq
+    phase = time_vector % period
+
+    # Создаем симметричный пилообразный сигнал
+    return np.where(
+        phase < period / 2,
+        2 * phase / period,
+        -2 * (phase - period / 2) / period + 1
+    )
 
 
 @reversed_signal
 def generate_one_sided_triangle_reversed(
-    freq: int, frate: int, time_vector: np.array
+    freq: int, frate: int, time_vector: np.array, linear_oscillator: Tuple[int]
 ):
-    return generate_one_sided_triangle(freq, frate, time_vector)
+    return generate_one_sided_triangle(
+        freq, frate, time_vector, linear_oscillator
+    )
 
 
 @reversed_signal
 def generate_two_sided_triangle_reversed(
-    freq: int, frate: int, time_vector: np.array
+    freq: int, frate: int, time_vector: np.array, linear_oscillator: Tuple[int]
 ):
-    return generate_two_sided_triangle(freq, frate, time_vector)
+    return generate_two_sided_triangle(
+        freq, frate, time_vector, linear_oscillator
+    )
 
 
 def generate_step_signal(
-    freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5
+    freq: int,
+    frate: int,
+    time_vector: np.array,
+    linear_oscillator: Tuple[int],
+    step_factor: float = 0.5,
 ):
     """
     Generates step signal form
@@ -103,25 +118,25 @@ def generate_step_signal(
     :param freq: Frequency of steps in one frame
     :param frate: Input frame rate
     :param time_vector: Input time vector
+    :param linear_oscillator: FM linear oscillator
     :return: Numpy array - resulting points for step signal
     """
-    num_of_intervals = frate // freq
-    part_interval = num_of_intervals * step_factor
-    output = []
-    for frame in range(len(time_vector)):
-        switch = not frame % num_of_intervals > part_interval
-        if switch:
-            output.append(1)
-        else:
-            output.append(0)
-    return np.array(output)
+    freq = linear_oscillator[0] * time_vector/frate + linear_oscillator[1] * freq
+    period = frate / freq
+    return np.where(time_vector % period < period*step_factor, 1, 0)
 
 
 @reversed_signal
 def generate_step_signal_reversed(
-    freq: int, frate: int, time_vector: np.array, step_factor: float = 0.5
+    freq: int,
+    frate: int,
+    time_vector: np.array,
+    linear_oscillator: Tuple[int],
+    step_factor: float = 0.5,
 ):
-    return generate_step_signal(freq, frate, time_vector, step_factor)
+    return generate_step_signal(
+        freq, frate, time_vector, linear_oscillator, step_factor
+    )
 
 
 signals = (

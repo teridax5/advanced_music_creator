@@ -95,33 +95,35 @@ class PlayWidget(Frame):
         self.join_channels_by_max = Button(self, text="Join by max")
         self.join_channels_by_max.pack(side=LEFT, padx=5)
 
-        self.join_channels_by_max = Button(self, text="Join by sum")
-        self.join_channels_by_max.pack(side=LEFT, padx=5)
+        self.join_channels_by_sum = Button(self, text="Join by sum")
+        self.join_channels_by_sum.pack(side=LEFT, padx=5)
 
-        self.join_channels_by_max = Button(self, text="Join channels")
-        self.join_channels_by_max.pack(side=LEFT, padx=5)
+        self.join_channels = Button(self, text="Join channels")
+        self.join_channels.pack(side=LEFT, padx=5)
 
         self.selected_sample = Label(self, text="Select sample")
         self.selected_sample.pack(side=LEFT, padx=5)
         self.sample_var = StringVar(self)
         self.sample_var.set("No samples")
         self.empty_option = "No samples"
-        self.samples = []
+        self.samples = set()
         self.sample_options = OptionMenu(
             self, self.sample_var, *[self.empty_option]
         )
         self.sample_options.pack(side=LEFT, padx=5)
-        self.samples.append("Sample1")
-        self.refresh_samples()
-        self.samples = []
-        self.refresh_samples()
+
+        self.add_filter = Button(self, text="Add filter")
+        self.add_filter.pack(side=LEFT, padx=5)
+
+        self.save_button = Button(self, text="Save sample")
+        self.save_button.pack(side=LEFT, padx=5)
 
         self.pack()
 
     def refresh_samples(self):
         # Reset var and delete all old options
         self.sample_var.set(
-            self.samples[-1] if self.samples else self.empty_option
+            list(self.samples)[-1] if self.samples else self.empty_option
         )
         self.sample_options["menu"].delete(0, "end")
 
@@ -143,7 +145,7 @@ class PlayWidget(Frame):
 
     def move_time_cursor(self, event=None):
         if (self.timer == self.end_time) or self.stopped:
-            self.scroll_canvas.delete('cursor')
+            self.scroll_canvas.delete("cursor")
             self.scroll_canvas.draw_scroller()
             self.timeline_label["text"] = time_format(0)
             if self.stopped:
@@ -174,7 +176,7 @@ class PlotWidget(Frame):
     def __init__(self):
         super().__init__()
 
-        self.fig = Figure(figsize=(13, 4))
+        self.fig = Figure(figsize=(15, 4))
         self.ax = self.fig.add_subplot()
         self.ax.plot()
         self.ax.grid()
@@ -268,10 +270,21 @@ class Channel(Frame):
         )
         self.frate_options.pack(side=LEFT)
 
-        self.add_label = Label(self.settings_frame, text="Additional")
+        self.add_label = Label(self.settings_frame, text="Q")
         self.add_label.pack(side=LEFT)
         self.add_param = Entry(self.settings_frame, width=3, state="disabled")
         self.add_param.pack(side=LEFT)
+
+        self.oscillator1 = Label(self.settings_frame, text="k")
+        self.oscillator1.pack(side=LEFT)
+        self.oscillator1_param = Entry(self.settings_frame, width=3, state="disabled")
+        self.oscillator1_param.pack(side=LEFT)
+
+        self.oscillator2 = Label(self.settings_frame, text="b")
+        self.oscillator2.pack(side=LEFT)
+        self.oscillator2_param = Entry(self.settings_frame, width=3,
+                                       state="disabled")
+        self.oscillator2_param.pack(side=LEFT)
 
         self.duration_label = Label(self.settings_frame, text="Duration(secs)")
         self.duration_label.pack(side=LEFT)
@@ -318,6 +331,8 @@ class Channel(Frame):
             self.remove_button,
             self.duration_param,
             self.shift_param,
+            self.oscillator1_param,
+            self.oscillator2_param,
         ]
         if self.selected.get() == self.default_option:
             for widget in widgets_to_update:
@@ -330,16 +345,14 @@ class Channel(Frame):
                 widget["state"] = "normal"
 
     def choose_width(self, *args):
-        if self.selected.get() != self.default_option:
-            self.data.update({"width": int(self.width_param.get())})
-        else:
+        if self.selected.get() == self.default_option:
             self.width_param.set("2")
 
+
     def choose_frate(self, *args):
-        if self.selected.get() != self.default_option:
-            self.data.update({"frame_rate": int(self.frate_param.get())})
-        else:
+        if self.selected.get() == self.default_option:
             self.frate_param.set("44100")
+
 
     @property
     def data(self):
@@ -350,6 +363,7 @@ class Channel(Frame):
             width=int(self.width_param.get()),
             duration=int(self.duration_param.get()),
             time_shift=int(self.shift_param.get()),
+            linear_oscillator=(int(self.oscillator1_param.get()), int(self.oscillator2_param.get())),
         )
 
     def button_action(self):

@@ -2,12 +2,13 @@ import io
 import subprocess
 import wave
 from collections.abc import Callable
-from threading import Thread, Event
-from typing import Dict, List
+from threading import Thread
+from typing import Dict, List, Tuple
 
 from pydub.playback import play
 
-from engine.time_spaced_signals import *
+from engine.time_spaced_signals import np, signals
+import engine.filters as filter_lib
 
 
 class AudioFile:
@@ -148,13 +149,26 @@ class AudioFile:
             daemon=True,
         )
 
+    def add_filter(self, filter_name: str, filter_params: dict):
+        if not len(self.signal_shape):
+            return
+        signal = self.signal_shape
+        filter_func = getattr(filter_lib, filter_name)
+        filtered_signal = filter_func(signal, **filter_params)
+        self.signal_shape = filtered_signal
+        encoded_signal = self.encode_time_spaced_signal(
+            filtered_signal, self.sound_info["sampwidth"]
+        )
+        self.content = bytes(encoded_signal)
+
     def generate_time_spaced_signal(
         self,
         source: Callable,
         frame_rate: int,
         source_kwargs: dict,
         duration: int,
-        delay,
+        delay: int,
+        linear_oscillator: Tuple[int] = (0, 1),
     ):
         """
         Generate signal based on input and writes np.array into signal_shape
@@ -165,6 +179,7 @@ class AudioFile:
         :param frame_rate: Frame rate for signal
         :param source_kwargs: Keyword args for source
         :param duration: Duration in seconds for audio signal
+        :param linear_oscillator: Linear FM modulation
         :return:
         """
         time_vector = np.array([i for i in range(frame_rate * duration)])
@@ -172,6 +187,7 @@ class AudioFile:
 
         source_kwargs["time_vector"] = time_vector
         source_kwargs["frate"] = frame_rate
+        source_kwargs["linear_oscillator"] = linear_oscillator
         signal = window * source(**source_kwargs)
         if delay:
             signal = np.append(np.zeros(delay * frame_rate), signal)
@@ -232,6 +248,7 @@ class AudioFile:
         save_name: str | None = None,
         duration: int = 1,
         time_shift: int = 0,
+        linear_oscillator: Tuple[int] = (0, 1),
     ):
         """
         Converts signal points from source into audio with parameters given
@@ -245,6 +262,7 @@ class AudioFile:
         concrete signal to get its kwargs)
         :param save_name: A path to save the file (optional)
         :param duration: Duration of sample in seconds
+        :param linear_oscillator: Linear FM modulation
         :return:
         """
         self.generate_time_spaced_signal(
@@ -253,6 +271,7 @@ class AudioFile:
             source_kwargs=source_kwargs,
             duration=duration,
             delay=time_shift,
+            linear_oscillator=linear_oscillator,
         )
         signal = self.signal_shape
         encoded_signal = self.encode_time_spaced_signal(
@@ -290,10 +309,8 @@ class AudioDriver:
             return
         audio_file.get_sound_info()
         audio_file.get_music_thread(
-            self.stopped_at if self.stopped_at else 0,
-            audio_file.track_length
+            self.stopped_at if self.stopped_at else 0, audio_file.track_length
         )
-        print(self.stopped_at)
         self.threads.append(self.audio_files[audio].thread)
 
     def create_new_sample(
@@ -306,6 +323,7 @@ class AudioDriver:
         channel_name: str,
         save_name: str | None = None,
         time_shift: int = 0,
+        linear_oscillator: Tuple[int] = (0, 1),
     ):
         """
         Creates new audio file by given parameters and puts it into audio
@@ -319,6 +337,7 @@ class AudioDriver:
         :param width: A byte height of the signal
         :param duration: A duration of the sample
         :param save_name: At which name the sample should be saved
+        :param linear_oscillator: FM linear oscillator
         :return: Result's signal name
         """
         if save_name:
@@ -332,6 +351,7 @@ class AudioDriver:
             save_name=save_name,
             duration=duration,
             time_shift=time_shift,
+            linear_oscillator=linear_oscillator,
         )
         audio_name = channel_name
         self.audio_files[audio_name] = new_sample
